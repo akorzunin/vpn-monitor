@@ -1,0 +1,78 @@
+# Copy to config.yaml (gitignored). Never commit live outbounds or tokens.
+listen: 127.0.0.1:8080
+api_token_env: VPN_MONITOR_API_TOKEN
+sing_box: sing-box
+web_dir: web/dist
+history_file: data/history.json
+interval: 5m
+timeout: 5s
+samples: 3
+
+# Verify both controls work without your VPN on the network being measured.
+controls:
+  - name: example
+    url: https://example.com/
+    status: 200
+  - name: wikipedia
+    url: https://www.wikipedia.org/
+    status: 200
+
+targets:
+  - name: gstatic
+    url: https://www.gstatic.com/generate_204
+    status: 204
+  - name: cloudflare
+    url: https://www.cloudflare.com/cdn-cgi/trace
+    status: 200
+
+# Optional. Use a trusted, uncompressed binary object you are authorized to download.
+# speed:
+#   url: https://downloads.example.net/random.bin
+#   max_bytes: 16777216
+#   timeout: 15s
+
+# Optional. Run the --echo subcommand on an already available remote host.
+# udp:
+#   endpoint: 192.0.2.20:9444
+#   token_env: VPN_MONITOR_UDP_TOKEN
+#   samples: 10
+#   timeout: 1s
+
+# Optional. Private chat IDs only; the bot ignores all other chats.
+# telegram:
+#   token_env: VPN_MONITOR_TELEGRAM_TOKEN
+#   chat_ids: [123456789]
+
+# Protocol entries contain native sing-box outbound fields.
+# Add arbitrary named servers and multiple protocols per server.
+servers:
+  - name: example-eu
+    protocols:
+      - name: vless
+        udp: true
+        outbound:
+          type: vless
+          server: 192.0.2.10
+          server_port: 443
+          uuid: 00000000-0000-4000-8000-000000000000
+          flow: xtls-rprx-vision
+          tls:
+            enabled: true
+            server_name: vpn.example.net
+            utls:
+              enabled: true
+              fingerprint: chrome
+            reality:
+              enabled: true
+              public_key: REPLACE_WITH_SERVER_PUBLIC_KEY
+              short_id: "0123456789abcdef"
+      - name: hysteria2
+        udp: true
+        outbound:
+          type: hysteria2
+          server: 192.0.2.10
+          server_port: 443
+          password: ${EXAMPLE_HYSTERIA_PASSWORD}
+          tls:
+            enabled: true
+            server_name: vpn.example.net

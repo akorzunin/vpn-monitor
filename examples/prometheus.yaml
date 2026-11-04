@@ -1,0 +1,21 @@
+scrape_configs:
+  - job_name: vpn-monitor
+    scrape_interval: 30s
+    static_configs:
+      - targets: [127.0.0.1:8080]
+    authorization:
+      credentials_file: /etc/prometheus/vpn-monitor-token
+
+# Example alert rules belong in a separate Prometheus rule file:
+# groups:
+#   - name: vpn-monitor
+#     rules:
+#       - alert: VPNMonitorStale
+#         expr: time() - vpn_monitor_last_run_timestamp_seconds > 900
+#         for: 2m
+#       - alert: VPNRouteFailure
+#         expr: vpn_monitor_state{state=~"down|error|degraded"} == 1
+#         for: 2m
+#       - alert: VPNMonitorUnavailable
+#         expr: up{job="vpn-monitor"} == 0
+#         for: 2m

@@ -1,0 +1,11 @@
+/config.yaml
+/config.*.yaml
+!/config.example.yaml
+/.env
+/data/
+/bin/
+/web/node_modules/
+/web/dist/
+/web/*.tsbuildinfo
+/coverage.out
+*.log
