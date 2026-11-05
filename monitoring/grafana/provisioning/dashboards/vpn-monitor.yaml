@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: VPN monitor
+    orgId: 1
+    folder: VPN monitor
+    type: file
+    disableDeletion: false
+    editable: false
+    options:
+      path: /etc/grafana/dashboards

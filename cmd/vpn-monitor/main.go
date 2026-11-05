@@ -16,6 +16,7 @@ import (
 
 func main() {
 	config := flag.String("config", "config.yaml", "YAML configuration path")
+	listen := flag.String("listen", "", "override the configured HTTP listen address")
 	echo := flag.Bool("echo", false, "run only the authenticated UDP echo endpoint")
 	echoListen := flag.String("echo-listen", "127.0.0.1:9444", "UDP echo listen address")
 	echoTokenEnv := flag.String("echo-token-env", "VPN_MONITOR_UDP_TOKEN", "UDP echo secret environment variable")
@@ -32,6 +33,12 @@ func main() {
 	cfg, err := monitor.LoadConfig(*config)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if *listen != "" {
+		if _, _, err := net.SplitHostPort(*listen); err != nil {
+			log.Fatal("listen override must be host:port")
+		}
+		cfg.Listen = *listen
 	}
 	if *check {
 		log.Printf("configuration valid: %d routes", len(cfg.Routes))

@@ -1,0 +1,91 @@
+name: vpn-monitor
+
+services:
+  monitor:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      VPN_MONITOR_API_TOKEN: ${VPN_MONITOR_API_TOKEN:?Set VPN_MONITOR_API_TOKEN in .env}
+    ports:
+      - "127.0.0.1:${VPN_MONITOR_PORT:-8080}:8080"
+    volumes:
+      - type: bind
+        source: ./config.yaml
+        target: /app/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - monitor-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    develop:
+      watch:
+        - action: rebuild
+          path: ./cmd
+        - action: rebuild
+          path: ./internal
+        - action: rebuild
+          path: ./web
+        - action: rebuild
+          path: ./go.mod
+        - action: rebuild
+          path: ./go.sum
+        - action: rebuild
+          path: ./Dockerfile
+        - action: rebuild
+          path: ./.dockerignore
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    restart: unless-stopped
+    depends_on:
+      monitor:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=1GB
+      - --web.listen-address=0.0.0.0:9090
+    volumes:
+      - ./monitoring/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    secrets:
+      - vpn_monitor_token
+
+  grafana:
+    image: grafana/grafana:13.3.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SERVER_HTTP_ADDR: 0.0.0.0
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./examples/grafana-dashboard.json:/etc/grafana/dashboards/vpn-monitor.json:ro
+    secrets:
+      - grafana_admin_password
+
+secrets:
+  vpn_monitor_token:
+    environment: VPN_MONITOR_API_TOKEN
+  grafana_admin_password:
+    environment: GRAFANA_ADMIN_PASSWORD
+
+volumes:
+  monitor-data:
+  prometheus-data:
+  grafana-data:

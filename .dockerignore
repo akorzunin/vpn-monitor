@@ -1,0 +1,15 @@
+# Allow only build inputs; never send credentials or local history to the builder.
+**
+!Dockerfile
+!.dockerignore
+!go.mod
+!go.sum
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!web/
+!web/**
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo

@@ -28,6 +28,9 @@ Latency percentiles describe successful samples only; failed samples remain visi
 
 ## Requirements and quick start
 
+For an all-in-one container setup without a local Go/Node/sing-box installation,
+see [Local stack (Docker Compose)](#local-stack-docker-compose). For native use:
+
 - Go 1.25+, Node.js 22.12+, npm.
 - A maintained **sing-box** binary with the outbound features you configure
   (Naïve requires a build including `with_naive_outbound`; QUIC protocols need QUIC).
@@ -199,6 +202,100 @@ Key metrics: `vpn_monitor_healthy`, `vpn_monitor_state`,
 `vpn_monitor_speed_bits_per_second`, `vpn_monitor_busy`,
 `vpn_monitor_persistence_error`. Unsupported/disabled UDP/speed series are absent.
 Alert on freshness, scrape availability and inconclusive results as well as failures.
+
+### Local stack (Docker Compose)
+
+The root [`compose.yaml`](compose.yaml) builds and runs **the monitor, Prometheus
+and Grafana** together. Requires Docker Engine/Desktop and **Docker Compose
+v2.22+**. Services communicate over Compose's private bridge network by service
+name; only loopback host ports are published. No host networking, privileged mode
+or `NET_ADMIN` is needed.
+
+Keep your real `config.yaml` and `.env` locally (or use `./install.sh` for Dropbox
+symlinks). Put all environment variables referenced by your config in `.env`,
+including `VPN_MONITOR_API_TOKEN`. Add a unique `GRAFANA_ADMIN_PASSWORD` there,
+or enter it without putting it in shell history:
+
+```bash
+read -r -s -p 'Grafana admin password: ' GRAFANA_ADMIN_PASSWORD
+printf '\n'
+export GRAFANA_ADMIN_PASSWORD
+
+docker compose up -d --build
+```
+
+Compose loads `.env` automatically; you do not need to source it or start a native
+monitor. The image builds the Go backend and web assets and includes sing-box
+1.14.4 with QUIC, uTLS and Naive support. Build context excludes live config,
+credentials, history and dependency/build directories. Config is mounted
+read-only, not baked into the image. The monitor receives `.env` as its runtime
+environment; Prometheus receives its bearer token as a mounted secret, and Grafana
+receives its initial admin password as a separate mounted secret.
+
+The container overrides only the HTTP listener to `0.0.0.0:8080` with `--listen`,
+so a shared config can retain its native loopback address/port. Default paths
+`sing_box: sing-box`, `web_dir: web/dist` and `history_file: data/history.json`
+work inside the image. Host-only paths (for example SSH identity files) need
+explicit read-only mounts and matching container paths. For a custom
+`api_token_env`, also set `VPN_MONITOR_API_TOKEN` to the same value for Prometheus.
+
+- **Monitor:** <http://127.0.0.1:8080>. Set `VPN_MONITOR_PORT=8081` in `.env` if
+  port 8080 is already used; this changes only the published host port.
+- **Grafana:** <http://127.0.0.1:3000>, login `admin` with your chosen password.
+  Open **Dashboards → VPN monitor → VPN monitor**. The data source and dashboard
+  are provisioned automatically.
+- **Prometheus:** <http://127.0.0.1:9090/targets>. The `vpn-monitor` target at
+  `http://monitor:8080/metrics` should show `UP` within about 30 seconds. Its token
+  must match the monitor's token. Grafana queries `http://prometheus:9090`, not
+  `localhost`. Existing host-network Compose containers are recreated on upgrade;
+  existing Prometheus/Grafana volumes are retained.
+
+For automatic rebuilding and restarting after Go/frontend/build-file changes:
+
+```sh
+docker compose up --build --watch
+```
+
+Watch ignores `web/node_modules`, `web/dist`, history and secrets. After editing
+`config.yaml` or `.env` (including Dropbox updates), recreate the monitor to
+reload configuration and rebind atomically replaced files:
+
+```sh
+docker compose up -d --force-recreate monitor
+# If the API token changed, recreate Prometheus too:
+docker compose up -d --force-recreate monitor prometheus
+```
+
+**Network caveat:** container probes measure the container's egress path. Docker
+NAT, host VPN/firewall rules and Docker Desktop's VM can make that differ from
+native applications. If you specifically need the native workstation path, use
+the native quick start and [`examples/prometheus.yaml`](examples/prometheus.yaml)
+with a suitable external Prometheus setup instead. Do not run native and container
+monitors simultaneously against the same routes unless duplicate test traffic is
+intentional.
+
+All three services use local Docker named volumes, never Dropbox. The monitor's
+container history starts separately from native `data/`; Prometheus does not
+import existing JSON history. Prometheus retention is bounded by seven days or
+1 GB, whichever is reached first (not a hard cap on all disk use). Grafana's
+password initializes its database only on first startup; change an existing
+password through Grafana, not by changing `.env`.
+
+```sh
+docker compose ps
+docker compose logs --tail=100 monitor prometheus grafana
+docker compose down       # Stop containers; keep all history and settings.
+# docker compose down -v  # Destructive: also delete all three data volumes.
+```
+
+If Grafana shows no data, check the Prometheus target and query
+`up{job="vpn-monitor"}` (should be `1`), then `vpn_monitor_healthy`. Health and
+freshness appear even before a successful test; latency requires successful HTTP
+samples, and disabled UDP/speed tests intentionally have no data. Refresh the
+dashboard's server/protocol filters after the first scrape. Provisioned dashboard
+edits belong in [`examples/grafana-dashboard.json`](examples/grafana-dashboard.json).
+Existing external Grafana installations are unaffected. Do not expose Prometheus
+via a proxy without access control.
 
 ## Development checks
 
