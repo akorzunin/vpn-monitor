@@ -59,6 +59,36 @@ processes do not bypass an existing system TUN, nftables rules or proxy routing.
 Verify the underlying routes/direct controls before interpreting results. No test
 proves ISP attribution, DPI invisibility, streaming quality, or an IP ban.
 
+## Shared configuration via Dropbox
+
+Keep the real `.env` and `config.yaml` in Dropbox, with local symlinks in each
+checkout. Once both files exist locally, run:
+
+```sh
+./install.sh
+# Or specify a different Dropbox location:
+./install.sh "$HOME/Dropbox/vpn-monitor"
+```
+
+The script only sets up shared configuration; it does not install dependencies
+or build the app. It moves existing local files into the shared directory, or
+links files already synced there on another machine. It is safe to rerun and
+refuses conflicting copies rather than overwriting them. Sync Dropbox before
+running it on another machine. Both project paths remain gitignored.
+
+This stores credentials in Dropbox. Only source a trusted, shell-compatible
+`.env`; the app does not load it automatically:
+
+```sh
+set -a
+. ./.env
+set +a
+bin/vpn-monitor --config config.yaml
+```
+
+Keep `data/` local to each machine and review machine-specific paths in the
+shared configuration. Configuration changes require a restart.
+
 ## Configuration
 
 See [`config.example.yaml`](config.example.yaml). Add as many named servers and
