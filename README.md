@@ -150,6 +150,22 @@ ASSOCIATE against the private local sing-box listener and never send probes
 straight to the endpoint as a fallback. Without an endpoint they are `disabled`.
 No ICMP privileges, TUN device, or `NET_ADMIN` are needed.
 
+### Empty UDP / download panels
+
+Both tests are opt-in. With no `udp.endpoint` or `speed.url`, their state is
+`disabled` and Prometheus intentionally omits those measurements. Add the `udp`
+and `speed` blocks shown in `config.example.yaml`, supply the UDP secret in the
+service environment, then restart/recreate the monitor. Allow the UDP port on
+the echo host only from your VPN exits. SSH and Naïve remain UDP `unsupported`.
+After tests finish, allow one Prometheus scrape for Grafana to receive data.
+
+For a small download sample, Cloudflare's public test URL
+`https://speed.cloudflare.com/__down?bytes=4194304` returns a 4 MiB binary object;
+set `speed.max_bytes: 4194304` and `speed.timeout: 15s`. At five-minute intervals
+across four routes this is up to **4.5 GiB/day**, excluding other probes. Endpoint
+failures are not proof of a VPN failure. An echo endpoint on the VPN exit itself
+measures the tunnel but does not test onward Internet UDP routing.
+
 ## Telegram and independent web access
 
 Create a bot using BotFather. Set `telegram.token_env` and an explicit allowlist
@@ -213,24 +229,41 @@ or `NET_ADMIN` is needed.
 
 Keep your real `config.yaml` and `.env` locally (or use `./install.sh` for Dropbox
 symlinks). Put all environment variables referenced by your config in `.env`,
-including `VPN_MONITOR_API_TOKEN`. Add a unique `GRAFANA_ADMIN_PASSWORD` there,
-or enter it without putting it in shell history:
+including `VPN_MONITOR_API_TOKEN` and, if UDP is enabled, `VPN_MONITOR_UDP_TOKEN`.
+With [Task](https://taskfile.dev/) installed, start everything without prompts:
 
-```bash
-read -r -s -p 'Grafana admin password: ' GRAFANA_ADMIN_PASSWORD
-printf '\n'
-export GRAFANA_ADMIN_PASSWORD
-
-docker compose up -d --build
+```sh
+task m  # alias: task monitor
 ```
+
+The task builds the app, starts all three services, waits for readiness, and sets
+Grafana's login to **admin / admin**, including when reusing its existing volume.
+It then runs Compose in the foreground with live logs: **Ctrl+C stops all three
+services**, preserving their data volumes. The initial detached step only prepares
+the containers and credentials. The data source and dashboard are provisioned
+automatically. Task URLs:
+
+- Grafana: <http://127.0.0.1:13000> (`admin` / `admin`).
+- Prometheus: <http://127.0.0.1:19090>.
+- VPN monitor: <http://127.0.0.1:18080> (use the API token from `.env`).
+
+These dedicated loopback ports avoid common local development/monitoring ports.
+No VPN credentials are generated: the private config and environment must already
+exist. Only Docker Compose and Task are needed on the host; Go/Node/sing-box are
+built/provided inside the image. **These simple Grafana credentials are local-only;
+do not expose this stack publicly.** Every `task m` run resets the admin password.
+
+Without Task, `docker compose up -d --build --wait` starts the same services using
+the default ports below; it initializes a new Grafana volume with `admin:admin`
+but does not reset an existing password.
 
 Compose loads `.env` automatically; you do not need to source it or start a native
 monitor. The image builds the Go backend and web assets and includes sing-box
 1.14.4 with QUIC, uTLS and Naive support. Build context excludes live config,
 credentials, history and dependency/build directories. Config is mounted
 read-only, not baked into the image. The monitor receives `.env` as its runtime
-environment; Prometheus receives its bearer token as a mounted secret, and Grafana
-receives its initial admin password as a separate mounted secret.
+environment; Prometheus receives its bearer token as a mounted secret. Grafana's
+local initial credentials are configured directly in Compose.
 
 The container overrides only the HTTP listener to `0.0.0.0:8080` with `--listen`,
 so a shared config can retain its native loopback address/port. Default paths
@@ -241,13 +274,14 @@ explicit read-only mounts and matching container paths. For a custom
 
 - **Monitor:** <http://127.0.0.1:8080>. Set `VPN_MONITOR_PORT=8081` in `.env` if
   port 8080 is already used; this changes only the published host port.
-- **Grafana:** <http://127.0.0.1:3000>, login `admin` with your chosen password.
-  Open **Dashboards → VPN monitor → VPN monitor**. The data source and dashboard
-  are provisioned automatically.
+- **Grafana:** <http://127.0.0.1:3000>, login `admin` / `admin` on a new volume.
+  Open **Dashboards → VPN monitor → VPN monitor**. Set `GRAFANA_PORT` to change
+  the published host port.
 - **Prometheus:** <http://127.0.0.1:9090/targets>. The `vpn-monitor` target at
   `http://monitor:8080/metrics` should show `UP` within about 30 seconds. Its token
   must match the monitor's token. Grafana queries `http://prometheus:9090`, not
-  `localhost`. Existing host-network Compose containers are recreated on upgrade;
+  `localhost`. Set `PROMETHEUS_PORT` to change the published host port.
+  Existing host-network Compose containers are recreated on upgrade;
   existing Prometheus/Grafana volumes are retained.
 
 For automatic rebuilding and restarting after Go/frontend/build-file changes:
@@ -278,8 +312,8 @@ All three services use local Docker named volumes, never Dropbox. The monitor's
 container history starts separately from native `data/`; Prometheus does not
 import existing JSON history. Prometheus retention is bounded by seven days or
 1 GB, whichever is reached first (not a hard cap on all disk use). Grafana's
-password initializes its database only on first startup; change an existing
-password through Grafana, not by changing `.env`.
+Compose password initializes its database only on first startup; `task m` also
+resets the existing admin password non-interactively without deleting data.
 
 ```sh
 docker compose ps

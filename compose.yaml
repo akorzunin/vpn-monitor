@@ -48,7 +48,7 @@ services:
       monitor:
         condition: service_healthy
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -58,6 +58,12 @@ services:
     volumes:
       - ./monitoring/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     secrets:
       - vpn_monitor_token
 
@@ -65,25 +71,28 @@ services:
     image: grafana/grafana:13.3.0
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     environment:
       GF_SERVER_HTTP_ADDR: 0.0.0.0
       GF_SERVER_HTTP_PORT: "3000"
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      # Local-only stack: do not expose these credentials beyond loopback.
+      GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./examples/grafana-dashboard.json:/etc/grafana/dashboards/vpn-monitor.json:ro
-    secrets:
-      - grafana_admin_password
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
 secrets:
   vpn_monitor_token:
     environment: VPN_MONITOR_API_TOKEN
-  grafana_admin_password:
-    environment: GRAFANA_ADMIN_PASSWORD
 
 volumes:
   monitor-data:

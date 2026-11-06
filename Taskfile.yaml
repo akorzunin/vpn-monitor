@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  monitor:
+    aliases: [m]
+    desc: Run local monitoring in the foreground (admin:admin; Ctrl+C to stop)
+    env:
+      VPN_MONITOR_PORT: '18080'
+      PROMETHEUS_PORT: '19090'
+      GRAFANA_PORT: '13000'
+    preconditions:
+      - sh: test -f config.yaml && test -f .env
+        msg: 'Private config.yaml and .env are required; run ./install.sh to link your Dropbox configuration.'
+    cmds:
+      - docker compose up -d --build --wait --wait-timeout 180
+      # Also enforce admin:admin when reusing an existing Grafana data volume.
+      - docker compose exec -T grafana grafana cli --homepath /usr/share/grafana --config /etc/grafana/grafana.ini admin reset-admin-password admin
+      - 'echo "Grafana: http://127.0.0.1:13000 (admin:admin)"'
+      - 'echo "Prometheus: http://127.0.0.1:19090"'
+      - 'echo "VPN monitor: http://127.0.0.1:18080 (use VPN_MONITOR_API_TOKEN from .env)"'
+      # Setup above needs ready containers; foreground Compose owns shutdown on Ctrl+C.
+      - docker compose up --no-build
